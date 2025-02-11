@@ -10,13 +10,10 @@ const LoginScreen = ({ navigation }) => {
 
   const handleLogin = () => {
     signInWithEmailAndPassword(auth, email, password)
-      .then((userCredential) => {
-        // Login successful, navigate to the Home screen or dashboard
-        navigation.navigate('Home'); // Ensure you have a "Home" screen defined in your navigator if you use this
-      })
       .catch((error) => {
         Alert.alert('Login Error', error.message);
       });
+    // No need to navigate manually here. onAuthStateChanged will switch to the AppStack.
   };
 
   return (
