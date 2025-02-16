@@ -10,16 +10,22 @@ import {
   Button,
   Alert
 } from 'react-native';
-import { collection, onSnapshot } from 'firebase/firestore';
+import { collection, onSnapshot, query, where } from 'firebase/firestore';
 import { signOut } from 'firebase/auth';
 import { db, auth } from '../services/firebaseConfig';
+import { useCart } from '../contexts/CartContext';
+import QRCode from 'react-native-qrcode-svg';
 
 const MenuScreen = ({ navigation }) => {
   const [menuItems, setMenuItems] = useState([]);
   const [selectedItem, setSelectedItem] = useState(null);
   const [modalVisible, setModalVisible] = useState(false);
+  const [selectedQuantity, setSelectedQuantity] = useState(1);
+  const [pendingOrderId, setPendingOrderId] = useState(null);
+  const [showOrderId, setShowOrderId] = useState(false);
+  const { addItemToCart } = useCart();
 
-  // Set up the logout button in the header.
+  // Configure the logout button in the header.
   useLayoutEffect(() => {
     navigation.setOptions({
       headerRight: () => (
@@ -33,7 +39,6 @@ const MenuScreen = ({ navigation }) => {
                 {
                   text: 'Logout',
                   onPress: () => {
-                    // Simply sign out; the onAuthStateChanged listener in App.js will switch navigators.
                     signOut(auth).catch((error) => {
                       console.error('Error signing out: ', error);
                     });
@@ -50,7 +55,7 @@ const MenuScreen = ({ navigation }) => {
     });
   }, [navigation]);
 
-  // Listen for real-time updates from the "menuItems" collection.
+  // Listen for menu items from Firestore.
   useEffect(() => {
     const unsubscribe = onSnapshot(
       collection(db, 'menuItems'),
@@ -68,11 +73,62 @@ const MenuScreen = ({ navigation }) => {
     return () => unsubscribe();
   }, []);
 
-  // Render each menu item as a button showing only its name and price.
+  // Check for any pending orders for the current user.
+  useEffect(() => {
+    const currentUser = auth.currentUser;
+    console.log('Current User:', currentUser);
+    if (!currentUser) return;
+    const ordersQuery = query(
+      collection(db, 'pendingOrders'),
+      where('userId', '==', currentUser.uid),
+      where('status', '==', 'pending')
+    );
+    const unsubscribeOrders = onSnapshot(
+      ordersQuery,
+      (snapshot) => {
+        console.log('Pending orders snapshot size:', snapshot.size);
+        if (!snapshot.empty) {
+          const orderDoc = snapshot.docs[0];
+          console.log('Pending order found:', orderDoc.data());
+          setPendingOrderId(orderDoc.id);
+        } else {
+          setPendingOrderId(null);
+        }
+      },
+      (error) => {
+        console.error('Error fetching pending orders: ', error);
+      }
+    );
+    return () => unsubscribeOrders();
+  }, []);
+
+  // If a pending order exists, disable the menu and show the QR code along with a drop‑down button.
+  if (pendingOrderId) {
+    return (
+      <View style={styles.container}>
+        <Text style={styles.pendingText}>
+          You have a pending order. Please scan the QR code below:
+        </Text>
+        <View style={styles.qrContainer}>
+          <QRCode value={pendingOrderId} size={250} />
+        </View>
+        <Button
+          title={showOrderId ? "Hide Order ID" : "Show Order ID"}
+          onPress={() => setShowOrderId(!showOrderId)}
+        />
+        {showOrderId && (
+          <Text style={styles.orderIdText}>Order ID: {pendingOrderId}</Text>
+        )}
+      </View>
+    );
+  }
+
+  // Render each menu item as a touchable card showing name and price.
   const renderItem = ({ item }) => (
     <TouchableOpacity
       onPress={() => {
         setSelectedItem(item);
+        setSelectedQuantity(1); // Reset quantity to 1 when opening the modal.
         setModalVisible(true);
       }}
     >
@@ -92,7 +148,7 @@ const MenuScreen = ({ navigation }) => {
         ListEmptyComponent={<Text>No menu items available.</Text>}
       />
 
-      {/* Modal for item details */}
+      {/* Modal for item details and quantity selection */}
       <Modal
         visible={modalVisible}
         transparent={true}
@@ -104,12 +160,28 @@ const MenuScreen = ({ navigation }) => {
             {selectedItem && (
               <>
                 <Text style={styles.modalTitle}>{selectedItem.name}</Text>
-                <Text style={styles.modalDescription}>{selectedItem.description}</Text>
+                <Text style={styles.modalDescription}>
+                  {selectedItem.description}
+                </Text>
+                <View style={styles.quantityContainer}>
+                  <Button
+                    title="-"
+                    onPress={() =>
+                      setSelectedQuantity(Math.max(1, selectedQuantity - 1))
+                    }
+                  />
+                  <Text style={styles.quantityText}>{selectedQuantity}</Text>
+                  <Button
+                    title="+"
+                    onPress={() => setSelectedQuantity(selectedQuantity + 1)}
+                  />
+                </View>
                 <View style={styles.modalButtonContainer}>
                   <Button
                     title="Add to Cart"
                     onPress={() => {
-                      Alert.alert('Success', 'Add to cart is working');
+                      addItemToCart(selectedItem, selectedQuantity);
+                      Alert.alert('Success', 'Item added to cart!');
                       setModalVisible(false);
                     }}
                   />
@@ -132,6 +204,20 @@ const styles = StyleSheet.create({
     flex: 1,
     padding: 20,
     backgroundColor: '#fff'
+  },
+  pendingText: {
+    fontSize: 18,
+    textAlign: 'center',
+    marginBottom: 20
+  },
+  qrContainer: {
+    alignItems: 'center',
+    marginBottom: 20
+  },
+  orderIdText: {
+    fontSize: 16,
+    textAlign: 'center',
+    marginTop: 10
   },
   itemContainer: {
     marginBottom: 15,
@@ -170,6 +256,15 @@ const styles = StyleSheet.create({
   modalDescription: {
     fontSize: 16,
     marginBottom: 20
+  },
+  quantityContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 20
+  },
+  quantityText: {
+    fontSize: 18,
+    marginHorizontal: 10
   },
   modalButtonContainer: {
     flexDirection: 'row',

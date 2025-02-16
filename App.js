@@ -4,9 +4,10 @@ import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
 import LoginScreen from './screens/LoginScreen';
 import RegisterScreen from './screens/RegisterScreen';
-import AppNavigator from './navigation/AppNavigator';
+import AppNavigator from './navigation/AppNavigator'; // Bottom tab navigator for Menu and Cart
 import { onAuthStateChanged } from 'firebase/auth';
 import { auth } from './services/firebaseConfig';
+import { CartProvider } from './contexts/CartContext';
 
 const AuthStack = createStackNavigator();
 const AuthStackScreen = () => (
@@ -28,7 +29,9 @@ const App = () => {
 
   return (
     <NavigationContainer>
-      {isAuthenticated ? <AppNavigator /> : <AuthStackScreen />}
+      <CartProvider>
+        {isAuthenticated ? <AppNavigator /> : <AuthStackScreen />}
+      </CartProvider>
     </NavigationContainer>
   );
 };
