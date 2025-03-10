@@ -4,7 +4,7 @@ import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
 import LoginScreen from './screens/LoginScreen';
 import RegisterScreen from './screens/RegisterScreen';
-import AppNavigator from './navigation/AppNavigator'; // Bottom tab navigator for Menu and Cart
+import AppNavigator from './navigation/AppNavigator'; // Navigator that includes MenuScreen, etc.
 import { onAuthStateChanged } from 'firebase/auth';
 import { auth } from './services/firebaseConfig';
 import { CartProvider } from './contexts/CartContext';
@@ -20,6 +20,7 @@ const AuthStackScreen = () => (
 const App = () => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
 
+  // Listen for authentication state changes.
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       setIsAuthenticated(!!user);

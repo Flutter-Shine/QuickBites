@@ -17,36 +17,34 @@ import { useCart } from '../contexts/CartContext';
 import QRCode from 'react-native-qrcode-svg';
 
 const MenuScreen = ({ navigation }) => {
+  // 1. Declare all state variables
   const [menuItems, setMenuItems] = useState([]);
   const [selectedItem, setSelectedItem] = useState(null);
   const [modalVisible, setModalVisible] = useState(false);
   const [selectedQuantity, setSelectedQuantity] = useState(1);
-  const [pendingOrderId, setPendingOrderId] = useState(null);
+  const [pendingOrder, setPendingOrder] = useState(null);
   const [showOrderId, setShowOrderId] = useState(false);
+
   const { addItemToCart } = useCart();
 
-  // Configure the logout button in the header.
+  // 2. Configure the logout button in the header.
   useLayoutEffect(() => {
     navigation.setOptions({
       headerRight: () => (
         <Button
           onPress={() => {
-            Alert.alert(
-              'Logout',
-              'Are you sure you want to log out?',
-              [
-                { text: 'Cancel', style: 'cancel' },
-                {
-                  text: 'Logout',
-                  onPress: () => {
-                    signOut(auth).catch((error) => {
-                      console.error('Error signing out: ', error);
-                    });
-                  },
-                  style: 'destructive'
-                }
-              ]
-            );
+            Alert.alert('Logout', 'Are you sure you want to log out?', [
+              { text: 'Cancel', style: 'cancel' },
+              {
+                text: 'Logout',
+                onPress: () => {
+                  signOut(auth).catch((error) => {
+                    console.error('Error signing out: ', error);
+                  });
+                },
+                style: 'destructive'
+              }
+            ]);
           }}
           title="Logout"
           color="#000"
@@ -55,15 +53,12 @@ const MenuScreen = ({ navigation }) => {
     });
   }, [navigation]);
 
-  // Listen for menu items from Firestore.
+  // 3. Subscribe to menuItems collection from Firestore.
   useEffect(() => {
     const unsubscribe = onSnapshot(
       collection(db, 'menuItems'),
       (snapshot) => {
-        const items = snapshot.docs.map((doc) => ({
-          id: doc.id,
-          ...doc.data()
-        }));
+        const items = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
         setMenuItems(items);
       },
       (error) => {
@@ -73,11 +68,12 @@ const MenuScreen = ({ navigation }) => {
     return () => unsubscribe();
   }, []);
 
-  // Check for any pending orders for the current user.
+  // 4. Check for any pending orders for the current user.
   useEffect(() => {
     const currentUser = auth.currentUser;
     console.log('Current User:', currentUser);
     if (!currentUser) return;
+
     const ordersQuery = query(
       collection(db, 'pendingOrders'),
       where('userId', '==', currentUser.uid),
@@ -90,9 +86,12 @@ const MenuScreen = ({ navigation }) => {
         if (!snapshot.empty) {
           const orderDoc = snapshot.docs[0];
           console.log('Pending order found:', orderDoc.data());
-          setPendingOrderId(orderDoc.id);
+          setPendingOrder({
+            id: orderDoc.id,
+            orderNumber: orderDoc.data().orderNumber
+          });
         } else {
-          setPendingOrderId(null);
+          setPendingOrder(null);
         }
       },
       (error) => {
@@ -102,33 +101,34 @@ const MenuScreen = ({ navigation }) => {
     return () => unsubscribeOrders();
   }, []);
 
-  // If a pending order exists, disable the menu and show the QR code along with a drop‑down button.
-  if (pendingOrderId) {
+  // 5. Conditional returns (after all hooks)
+  // a) If a pending order exists, show the pending order QR screen (this takes priority).
+  if (pendingOrder) {
     return (
       <View style={styles.container}>
-        <Text style={styles.pendingText}>
-          You have a pending order. Please scan the QR code below:
-        </Text>
+        <Text style={styles.pendingText}>You have a pending order.</Text>
+        <Text style={styles.pendingText}>Please Proceed to the Canteen</Text>
+        <Text style={styles.orderNumberText}>Order Number: {pendingOrder.orderNumber}</Text>
         <View style={styles.qrContainer}>
-          <QRCode value={pendingOrderId} size={250} />
+          <QRCode value={pendingOrder.id} size={250} />
         </View>
         <Button
-          title={showOrderId ? "Hide Order ID" : "Show Order ID"}
+          title={showOrderId ? 'Hide Order ID' : 'Show Order ID'}
           onPress={() => setShowOrderId(!showOrderId)}
         />
         {showOrderId && (
-          <Text style={styles.orderIdText}>Order ID: {pendingOrderId}</Text>
+          <Text style={styles.orderIdText}>Order ID: {pendingOrder.id}</Text>
         )}
       </View>
     );
   }
 
-  // Render each menu item as a touchable card showing name and price.
+  // b) Otherwise, render the normal menu.
   const renderItem = ({ item }) => (
     <TouchableOpacity
       onPress={() => {
         setSelectedItem(item);
-        setSelectedQuantity(1); // Reset quantity to 1 when opening the modal.
+        setSelectedQuantity(1); // Reset quantity when opening modal.
         setModalVisible(true);
       }}
     >
@@ -160,9 +160,7 @@ const MenuScreen = ({ navigation }) => {
             {selectedItem && (
               <>
                 <Text style={styles.modalTitle}>{selectedItem.name}</Text>
-                <Text style={styles.modalDescription}>
-                  {selectedItem.description}
-                </Text>
+                <Text style={styles.modalDescription}>{selectedItem.description}</Text>
                 <View style={styles.quantityContainer}>
                   <Button
                     title="-"
@@ -185,10 +183,7 @@ const MenuScreen = ({ navigation }) => {
                       setModalVisible(false);
                     }}
                   />
-                  <Button
-                    title="Cancel"
-                    onPress={() => setModalVisible(false)}
-                  />
+                  <Button title="Cancel" onPress={() => setModalVisible(false)} />
                 </View>
               </>
             )}
@@ -200,6 +195,11 @@ const MenuScreen = ({ navigation }) => {
 };
 
 const styles = StyleSheet.create({
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center'
+  },
   container: {
     flex: 1,
     padding: 20,
@@ -208,16 +208,21 @@ const styles = StyleSheet.create({
   pendingText: {
     fontSize: 18,
     textAlign: 'center',
-    marginBottom: 20
+    marginBottom: 10
+  },
+  orderNumberText: {
+    fontSize: 16,
+    textAlign: 'center',
+    marginBottom: 10
   },
   qrContainer: {
     alignItems: 'center',
-    marginBottom: 20
+    marginBottom: 10
   },
   orderIdText: {
-    fontSize: 16,
+    fontSize: 14,
     textAlign: 'center',
-    marginTop: 10
+    marginBottom: 20
   },
   itemContainer: {
     marginBottom: 15,
