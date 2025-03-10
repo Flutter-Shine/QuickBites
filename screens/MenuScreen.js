@@ -8,7 +8,8 @@ import {
   TouchableOpacity,
   Modal,
   Button,
-  Alert
+  Alert,
+  ActivityIndicator
 } from 'react-native';
 import { collection, onSnapshot, query, where } from 'firebase/firestore';
 import { signOut } from 'firebase/auth';
@@ -58,7 +59,10 @@ const MenuScreen = ({ navigation }) => {
     const unsubscribe = onSnapshot(
       collection(db, 'menuItems'),
       (snapshot) => {
-        const items = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+        // Map each document to an object and filter out items with stock <= 1.
+        const items = snapshot.docs
+          .map((doc) => ({ id: doc.id, ...doc.data() }))
+          .filter((item) => item.stock > 1);
         setMenuItems(items);
       },
       (error) => {
@@ -161,6 +165,8 @@ const MenuScreen = ({ navigation }) => {
               <>
                 <Text style={styles.modalTitle}>{selectedItem.name}</Text>
                 <Text style={styles.modalDescription}>{selectedItem.description}</Text>
+                {/* Display available stock */}
+                <Text style={styles.stockText}>Available Stock: {selectedItem.stock}</Text>
                 <View style={styles.quantityContainer}>
                   <Button
                     title="-"
@@ -178,6 +184,10 @@ const MenuScreen = ({ navigation }) => {
                   <Button
                     title="Add to Cart"
                     onPress={() => {
+                      if (selectedQuantity > selectedItem.stock) {
+                        Alert.alert('Order Exceeds Stock', 'The selected quantity exceeds available stock.');
+                        return;
+                      }
                       addItemToCart(selectedItem, selectedQuantity);
                       Alert.alert('Success', 'Item added to cart!');
                       setModalVisible(false);
@@ -261,6 +271,11 @@ const styles = StyleSheet.create({
   modalDescription: {
     fontSize: 16,
     marginBottom: 20
+  },
+  stockText: {
+    fontSize: 16,
+    marginBottom: 10,
+    color: 'red'
   },
   quantityContainer: {
     flexDirection: 'row',
