@@ -75,34 +75,76 @@ const MenuScreen = ({ navigation }) => {
   // 4. Check for any pending orders for the current user.
   useEffect(() => {
     const currentUser = auth.currentUser;
-    console.log('Current User:', currentUser);
-    if (!currentUser) return;
+  console.log('Current User:', currentUser);
+  if (!currentUser) return;
 
-    const ordersQuery = query(
+  try {
+    // Query for pending orders
+    const pendingQuery = query(
       collection(db, 'pendingOrders'),
       where('userId', '==', currentUser.uid),
-      where('status', '==', 'pending')
+      where('status', 'in', ['pending', 'prepared']) // Check both statuses
     );
-    const unsubscribeOrders = onSnapshot(
-      ordersQuery,
-      (snapshot) => {
-        console.log('Pending orders snapshot size:', snapshot.size);
-        if (!snapshot.empty) {
-          const orderDoc = snapshot.docs[0];
-          console.log('Pending order found:', orderDoc.data());
-          setPendingOrder({
-            id: orderDoc.id,
-            orderNumber: orderDoc.data().orderNumber
-          });
-        } else {
-          setPendingOrder(null);
+
+    // Query for prepared orders
+    const preparedQuery = query(
+      collection(db, 'preparedOrders'),
+      where('userId', '==', currentUser.uid),
+      where('status', 'in', ['pending', 'prepared'])
+    );
+
+    // Listen for changes in pending orders
+    const unsubscribePending = onSnapshot(
+      pendingQuery,
+      (pendingSnapshot) => {
+        try {
+          const pendingOrders = pendingSnapshot.docs.map((doc) => ({
+            id: doc.id,
+            orderNumber: doc.data().orderNumber,
+          }));
+
+          // Listen for changes in prepared orders
+          const unsubscribePrepared = onSnapshot(
+            preparedQuery,
+            (preparedSnapshot) => {
+              try {
+                const preparedOrders = preparedSnapshot.docs.map((doc) => ({
+                  id: doc.id,
+                  orderNumber: doc.data().orderNumber,
+                }));
+
+                // Combine both sets of orders
+                const allOrders = [...pendingOrders, ...preparedOrders];
+
+                if (allOrders.length > 0) {
+                  console.log('Active order found:', allOrders[0]);
+                  setPendingOrder(allOrders[0]); // Display first found order
+                } else {
+                  setPendingOrder(null);
+                }
+              } catch (error) {
+                console.error('Error processing prepared orders:', error);
+              }
+            },
+            (error) => {
+              console.error('Error fetching prepared orders:', error);
+            }
+          );
+
+          return () => unsubscribePrepared();
+        } catch (error) {
+          console.error('Error processing pending orders:', error);
         }
       },
       (error) => {
-        console.error('Error fetching pending orders: ', error);
+        console.error('Error fetching pending orders:', error);
       }
     );
-    return () => unsubscribeOrders();
+
+    return () => unsubscribePending();
+  } catch (error) {
+    console.error('Error setting up Firestore listeners:', error);
+  }
   }, []);
 
   // 5. Conditional returns (after all hooks)

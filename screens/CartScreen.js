@@ -101,9 +101,13 @@ const CartScreen = ({ navigation }) => {
       Alert.alert('Error', 'No user is logged in.');
       return;
     }
+  
     try {
+      // ✅ Step 1: Get the next order number BEFORE the transaction starts
+      const nextOrderNumber = await getNextOrderNumber();
+  
       await runTransaction(db, async (transaction) => {
-        // For each item in the cart, check and update the stock
+        // ✅ Step 2: Read stock levels first
         for (const cartItem of cartItems) {
           const menuItemRef = doc(db, 'menuItems', cartItem.id);
           const menuItemDoc = await transaction.get(menuItemRef);
@@ -114,12 +118,11 @@ const CartScreen = ({ navigation }) => {
           if (currentStock < cartItem.quantity) {
             throw new Error(`Insufficient stock for ${cartItem.name}. Available: ${currentStock}`);
           }
+          // ✅ Step 3: Now update stock levels
           transaction.update(menuItemRef, { stock: currentStock - cartItem.quantity });
         }
-
-        const nextOrderNumber = await getNextOrderNumber();
-
-        // Build the order object including the timeslot field
+  
+        // ✅ Step 4: Create the order document inside the transaction
         const order = {
           items: cartItems,
           totalQuantity,
@@ -130,12 +133,28 @@ const CartScreen = ({ navigation }) => {
           orderNumber: nextOrderNumber,
           timeslot: selectedTimeslot
         };
-
+  
         const orderRef = await addDoc(collection(db, 'pendingOrders'), order);
         setOrderId(orderRef.id);
       });
+  
+      // ✅ Step 5: Create a notification for the order
+      const notificationMessage = cartItems.map(item => `${item.name} x${item.quantity}`).join(", ");
+      
+      const notification = {
+        userId: currentUser.uid,
+        title: "Order Placed!",
+        message: `Your order #${nextOrderNumber} has been placed successfully.\nItems: ${notificationMessage}`,
+        orderNumber: nextOrderNumber,
+        timestamp: new Date(),
+        status: "unread",
+      };
+  
+      await addDoc(collection(db, "notifications"), notification);
+  
       clearCart();
       navigation.navigate('Menu');
+  
     } catch (error) {
       Alert.alert('Order Error', error.message);
     }
