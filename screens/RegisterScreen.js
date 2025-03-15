@@ -1,58 +1,54 @@
 // RegisterScreen.js
 import React, { useState } from 'react';
-import { View, Text, TextInput, Button, StyleSheet, Alert } from 'react-native';
+import { 
+  View, 
+  Text, 
+  TextInput, 
+  Button, 
+  StyleSheet, 
+  Alert, 
+  TouchableOpacity 
+} from 'react-native';
 import { createUserWithEmailAndPassword, updateProfile, signOut } from 'firebase/auth';
 import { doc, setDoc } from 'firebase/firestore';
 import { auth, db } from '../services/firebaseConfig';
-import * as Notifications from 'expo-notifications';
 
 const RegisterScreen = ({ navigation }) => {
   const [name, setName] = useState('');
-  const [className, setClassName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-
-  async function getPushToken() {
-    try {
-      const { status } = await Notifications.getPermissionsAsync();
-      if (status !== 'granted') {
-        const { status: newStatus } = await Notifications.requestPermissionsAsync();
-        if (newStatus !== 'granted') {
-          console.log('Push notifications permission denied');
-          return null;
-        }
-      }
-  
-      // Manually input the Firebase Project ID for debugging
-      const tokenData = await Notifications.getExpoPushTokenAsync({
-        projectId: 'quickbites-ea42b', // Replace with your actual Firebase Project ID
-      });
-  
-      return tokenData.data;
-    } catch (error) {
-      console.error('Error getting push token:', error);
-      return null;
-    }
-  }
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [learnerRefNumber, setLearnerRefNumber] = useState('');
 
   const handleRegister = async () => {
+    // Basic validation
+    if (!name.trim() || !email.trim() || !learnerRefNumber.trim()) {
+      Alert.alert('Validation Error', 'All fields are required.');
+      return;
+    }
+    if (password !== confirmPassword) {
+      Alert.alert('Validation Error', 'Passwords do not match.');
+      return;
+    }
+
     try {
+      // Create the user in Firebase Auth
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
       const user = userCredential.user;
 
+      // Optionally update the displayName
       await updateProfile(user, { displayName: name });
 
-      const expoPushToken = await getPushToken();
-
+      // Save user details in Firestore (No push token included)
       await setDoc(doc(db, 'users', user.uid), {
         userId: user.uid,
         name,
-        className,
+        learnerRefNumber,
         email,
         createdAt: new Date(),
-        expoPushToken,
       });
 
+      // Sign out the user after registration
       await signOut(auth);
 
       Alert.alert('Registration Successful', 'Your account has been created. Please log in.');
@@ -64,22 +60,126 @@ const RegisterScreen = ({ navigation }) => {
   };
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Register</Text>
-      <TextInput style={styles.input} placeholder="Name" value={name} onChangeText={setName} />
-      <TextInput style={styles.input} placeholder="Class" value={className} onChangeText={setClassName} />
-      <TextInput style={styles.input} placeholder="Email" value={email} onChangeText={setEmail} autoCapitalize="none" />
-      <TextInput style={styles.input} placeholder="Password" value={password} onChangeText={setPassword} secureTextEntry />
-      <Button title="Register" onPress={handleRegister} />
-      <Button title="Already have an account? Login" onPress={() => navigation.navigate('Login')} />
+    <View style={styles.screenContainer}>
+      <View style={styles.registerBox}>
+        <Text style={styles.registerTitle}>Sign In</Text>
+
+        <TextInput
+          style={styles.input}
+          placeholder="Name"
+          placeholderTextColor="#cce0ff"
+          value={name}
+          onChangeText={setName}
+        />
+
+        <TextInput
+          style={styles.input}
+          placeholder="Email"
+          placeholderTextColor="#cce0ff"
+          value={email}
+          onChangeText={setEmail}
+          autoCapitalize="none"
+        />
+
+        <TextInput
+          style={styles.input}
+          placeholder="Password"
+          placeholderTextColor="#cce0ff"
+          value={password}
+          onChangeText={setPassword}
+          secureTextEntry
+        />
+
+        <TextInput
+          style={styles.input}
+          placeholder="Confirm Password"
+          placeholderTextColor="#cce0ff"
+          value={confirmPassword}
+          onChangeText={setConfirmPassword}
+          secureTextEntry
+        />
+
+        <TextInput
+          style={styles.input}
+          placeholder="Learners Reference Number"
+          placeholderTextColor="#cce0ff"
+          value={learnerRefNumber}
+          onChangeText={setLearnerRefNumber}
+        />
+
+        <TouchableOpacity style={styles.registerButton} onPress={handleRegister}>
+          <Text style={styles.registerButtonText}>Start Ordering Today!</Text>
+        </TouchableOpacity>
+
+        <View style={styles.linkRow}>
+          <Text style={styles.linkText}>I already have an account? </Text>
+          <TouchableOpacity onPress={() => navigation.navigate('Login')}>
+            <Text style={styles.link}>Login</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
     </View>
   );
 };
 
-const styles = StyleSheet.create({
-  container: { flex: 1, justifyContent: 'center', padding: 20 },
-  title: { fontSize: 24, marginBottom: 20, textAlign: 'center' },
-  input: { height: 40, borderColor: 'gray', borderWidth: 1, marginBottom: 15, paddingHorizontal: 10 },
-});
-
 export default RegisterScreen;
+
+const styles = StyleSheet.create({
+  screenContainer: {
+    flex: 1,
+    backgroundColor: '#fdf5e6',  // Cream background
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  registerBox: {
+    backgroundColor: '#003B6F',  // Navy
+    borderRadius: 20,
+    padding: 30,
+    width: '85%',
+    alignItems: 'center',
+  },
+  registerTitle: {
+    fontSize: 24,
+    color: '#fff',
+    marginBottom: 20,
+    fontWeight: 'bold',
+  },
+  input: {
+    width: '100%',
+    height: 40,
+    borderColor: '#fff',
+    borderWidth: 1,
+    borderRadius: 8,
+    marginBottom: 15,
+    paddingHorizontal: 10,
+    color: '#fff',
+  },
+  registerButton: {
+    backgroundColor: '#800000', // Maroon
+    borderRadius: 20,
+    paddingVertical: 10,
+    paddingHorizontal: 30,
+    marginTop: 10,
+    marginBottom: 20,
+  },
+  registerButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  linkRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  linkText: {
+    color: '#fff',
+    fontSize: 14,
+  },
+  link: {
+    color: '#ffd700',
+    fontSize: 14,
+    fontWeight: 'bold',
+    textDecorationLine: 'underline',
+  },
+});

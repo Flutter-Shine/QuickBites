@@ -10,8 +10,13 @@ import { auth } from './services/firebaseConfig';
 import { CartProvider } from './contexts/CartContext';
 
 const AuthStack = createStackNavigator();
+
 const AuthStackScreen = () => (
-  <AuthStack.Navigator>
+  <AuthStack.Navigator
+    screenOptions={{
+      headerShown: false, // Hide header for every screen in this stack
+    }}
+  >
     <AuthStack.Screen name="Login" component={LoginScreen} />
     <AuthStack.Screen name="Register" component={RegisterScreen} />
   </AuthStack.Navigator>

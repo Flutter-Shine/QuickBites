@@ -1,11 +1,10 @@
 // screens/CartScreen.js
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useLayoutEffect } from 'react';
 import { 
   View, 
   Text, 
   FlatList, 
   StyleSheet, 
-  Button, 
   Alert, 
   ActivityIndicator, 
   TouchableOpacity, 
@@ -14,55 +13,65 @@ import {
 import { useCart } from '../contexts/CartContext';
 import { addDoc, collection, runTransaction, getDocs, query, where, doc } from 'firebase/firestore';
 import { db, auth } from '../services/firebaseConfig';
-import QRCode from 'react-native-qrcode-svg';
 
 const CartScreen = ({ navigation }) => {
-  // Destructure cartItems, clearCart, and updateItemQuantity from the context
   const { cartItems, clearCart, updateItemQuantity } = useCart();
   const [orderId, setOrderId] = useState(null);
 
-  // New states for time-check using API time (Asia/Singapore, GMT+8)
+  // Time-check states
   const [timeLoading, setTimeLoading] = useState(true);
   const [orderingDisabled, setOrderingDisabled] = useState(false);
 
-  // New states for timeslot modal
+  // Timeslot modal states
   const [timeslotModalVisible, setTimeslotModalVisible] = useState(false);
   const [selectedTimeslot, setSelectedTimeslot] = useState(null);
 
   // Calculate total quantity and cost
   const totalQuantity = cartItems.reduce((acc, item) => acc + item.quantity, 0);
-  const totalCost = cartItems
-    .reduce((acc, item) => acc + item.price * item.quantity, 0)
-    .toFixed(2);
+  const totalCost = cartItems.reduce((acc, item) => acc + item.price * item.quantity, 0).toFixed(2);
 
-  // Fetch server time from the API and determine if ordering is disabled
+  // 1) Configure the header: Navy background, cream title, centered
+  useLayoutEffect(() => {
+    navigation.setOptions({
+      headerTitle: 'CART',
+      headerTitleAlign: 'center',
+      headerStyle: { backgroundColor: '#003B6F' }, // Navy
+      headerTitleStyle: { color: '#fdf5e6', fontSize: 24, fontWeight: 'bold' }, // Cream text
+    });
+  }, [navigation]);
+
+  // 2) Fetch server time from the API and determine if ordering is disabled
   useEffect(() => {
     async function fetchServerTime() {
       let minutes;
       try {
-        // Use Asia/Singapore timezone for GMT+8
-        const response = await fetch('https://timeapi.io/api/Time/current/zone?timeZone=Asia/Singapore');
+        console.log("Fetching server time...");
+        const response = await fetch("https://timeapi.io/api/Time/current/zone?timeZone=Asia/Singapore");
+
+        if (!response.ok) {
+          throw new Error(`Server responded with status: ${response.status}`);
+        }
         const data = await response.json();
-        // Expect data.dateTime as an ISO string, e.g., "2025-03-05T10:15:30.000Z"
         const serverTime = new Date(data.dateTime);
         minutes = serverTime.getHours() * 60 + serverTime.getMinutes();
+        console.log("Fetched server time:", serverTime);
       } catch (error) {
-        console.error('Error fetching server time:', error);
+        console.error("Error fetching server time:", error);
         // Fallback: use device local time
         const localTime = new Date();
         minutes = localTime.getHours() * 60 + localTime.getMinutes();
+        console.warn("Using device local time instead:", localTime);
       } finally {
         // Define disabled intervals:
-        // 10:00 AM - 10:30 AM => 600 to 630 minutes
-        // 12:30 PM - 4:00 PM   => 750 to 960 minutes
-        const disableInterval1Start = 10 * 60;      // 600
-        const disableInterval1End = 10 * 60 + 30;     // 630
-        const disableInterval2Start = 12 * 60 + 30;   // 750
-        const disableInterval2End = 16 * 60;          // 960
+        const disableInterval1Start = 10 * 60; // 10:00 AM
+        const disableInterval1End = 10 * 60 + 30; // 10:30 AM
+        const disableInterval2Start = 12 * 60 + 30; // 12:30 PM
+        const disableInterval2End = 13 * 60;       // 1:00 PM (adjust if needed)
 
         const isDisabled =
           (minutes >= disableInterval1Start && minutes < disableInterval1End) ||
           (minutes >= disableInterval2Start && minutes < disableInterval2End);
+
         setOrderingDisabled(isDisabled);
         setTimeLoading(false);
       }
@@ -70,20 +79,20 @@ const CartScreen = ({ navigation }) => {
     fetchServerTime();
   }, []);
 
-  // Function to generate the next order number for today
+  // 3) Generate the next order number for today
   const getNextOrderNumber = async () => {
     const today = new Date();
-    const dateString = today.toISOString().split('T')[0]; // e.g., "2023-02-13"
+    const dateString = today.toISOString().split('T')[0];
     const startOfDay = new Date(dateString);
     const endOfDay = new Date(dateString + "T23:59:59.999Z");
 
-    const ordersQuery = query(
+    const ordersQueryRef = query(
       collection(db, 'pendingOrders'),
       where('createdAt', '>=', startOfDay),
       where('createdAt', '<=', endOfDay)
     );
 
-    const snapshot = await getDocs(ordersQuery);
+    const snapshot = await getDocs(ordersQueryRef);
     let maxOrderNumber = 999;
     snapshot.forEach((doc) => {
       const data = doc.data();
@@ -94,23 +103,25 @@ const CartScreen = ({ navigation }) => {
     return maxOrderNumber + 1;
   };
 
-  // Helper function to complete checkout, updating stock and creating the order document
+  // 4) Complete checkout
   const completeCheckout = async (selectedTimeslot) => {
     const currentUser = auth.currentUser;
     if (!currentUser) {
       Alert.alert('Error', 'No user is logged in.');
       return;
     }
-  
+
     try {
-      // ✅ Step 1: Get the next order number BEFORE the transaction starts
       const nextOrderNumber = await getNextOrderNumber();
-  
+      const orderRef = doc(collection(db, 'pendingOrders'));
+
       await runTransaction(db, async (transaction) => {
-        // ✅ Step 2: Read stock levels first
+        const stockUpdates = [];
+
         for (const cartItem of cartItems) {
           const menuItemRef = doc(db, 'menuItems', cartItem.id);
           const menuItemDoc = await transaction.get(menuItemRef);
+
           if (!menuItemDoc.exists()) {
             throw new Error(`Item ${cartItem.name} does not exist.`);
           }
@@ -118,12 +129,16 @@ const CartScreen = ({ navigation }) => {
           if (currentStock < cartItem.quantity) {
             throw new Error(`Insufficient stock for ${cartItem.name}. Available: ${currentStock}`);
           }
-          // ✅ Step 3: Now update stock levels
-          transaction.update(menuItemRef, { stock: currentStock - cartItem.quantity });
+          stockUpdates.push({ menuItemRef, newStock: currentStock - cartItem.quantity });
         }
-  
-        // ✅ Step 4: Create the order document inside the transaction
-        const order = {
+
+        // Update stock
+        for (const update of stockUpdates) {
+          transaction.update(update.menuItemRef, { stock: update.newStock });
+        }
+
+        // Create the order doc
+        transaction.set(orderRef, {
           items: cartItems,
           totalQuantity,
           totalCost: parseFloat(totalCost),
@@ -132,36 +147,32 @@ const CartScreen = ({ navigation }) => {
           userId: currentUser.uid,
           orderNumber: nextOrderNumber,
           timeslot: selectedTimeslot
-        };
-  
-        const orderRef = await addDoc(collection(db, 'pendingOrders'), order);
-        setOrderId(orderRef.id);
+        });
       });
-  
-      // ✅ Step 5: Create a notification for the order
+
+      // Create a notification
       const notificationMessage = cartItems.map(item => `${item.name} x${item.quantity}`).join(", ");
-      
-      const notification = {
+      await addDoc(collection(db, "notifications"), {
         userId: currentUser.uid,
         title: "Order Placed!",
         message: `Your order #${nextOrderNumber} has been placed successfully.\nItems: ${notificationMessage}`,
         orderNumber: nextOrderNumber,
         timestamp: new Date(),
-        status: "unread",
-      };
-  
-      await addDoc(collection(db, "notifications"), notification);
-  
+        status: "unread"
+      });
+
+      setOrderId(orderRef.id);
       clearCart();
       navigation.navigate('Menu');
-  
+
     } catch (error) {
+      console.error("Transaction Error:", error);
       Alert.alert('Order Error', error.message);
     }
   };
 
-  // Function to handle checkout. Instead of Alert options, we open the timeslot modal.
-  const handleCheckout = async () => {
+  // 5) Handle checkout
+  const handleCheckout = () => {
     if (cartItems.length === 0) {
       Alert.alert('Cart is empty', 'Please add items to your cart.');
       return;
@@ -178,11 +189,10 @@ const CartScreen = ({ navigation }) => {
       Alert.alert('Checkout Error', 'You cannot checkout if the total quantity exceeds 3 Items.');
       return;
     }
-    // Open the timeslot modal
     setTimeslotModalVisible(true);
   };
 
-  // Render each cart item
+  // 6) Render each cart item
   const renderItem = ({ item }) => {
     const itemTotalPrice = (item.price * item.quantity).toFixed(2);
     return (
@@ -190,26 +200,34 @@ const CartScreen = ({ navigation }) => {
         <Text style={styles.itemName}>{item.name}</Text>
         <View style={styles.itemRow}>
           <View style={styles.quantityControls}>
-            <Button
-              title="-"
+            {/* Replace <Button> with maroon touchable buttons if desired */}
+            <TouchableOpacity
+              style={styles.maroonButton}
               onPress={() => {
                 if (item.quantity > 1) {
                   updateItemQuantity(item.id, item.quantity - 1);
                 }
               }}
-            />
+            >
+              <Text style={styles.maroonButtonText}>-</Text>
+            </TouchableOpacity>
+
             <Text style={styles.itemQuantityText}>{item.quantity}</Text>
-            <Button
-              title="+"
+
+            <TouchableOpacity
+              style={styles.maroonButton}
               onPress={() => updateItemQuantity(item.id, item.quantity + 1)}
-            />
+            >
+              <Text style={styles.maroonButtonText}>+</Text>
+            </TouchableOpacity>
           </View>
-          <Text style={styles.itemPrice}>${itemTotalPrice}</Text>
+          <Text style={styles.itemPrice}>P{itemTotalPrice}</Text>
         </View>
       </View>
     );
   };
 
+  // 7) Loading state
   if (timeLoading) {
     return (
       <View style={styles.loadingContainer}>
@@ -218,19 +236,24 @@ const CartScreen = ({ navigation }) => {
     );
   }
 
+  // 8) Main render
   return (
     <View style={styles.container}>
-      {/* Header with title on the left and Clear Cart button on the right */}
+      {/* Header row with "Your Cart" and "Clear Cart" */}
       <View style={styles.header}>
-        <Text style={styles.title}>Your Cart</Text>
-        <Button 
-          title="Clear Cart" 
+        <Text style={styles.title}>Your Order</Text>
+        <TouchableOpacity
+          style={styles.maroonButton}
           onPress={() => {
             clearCart();
             Alert.alert('Cart Cleared', 'Your cart is now empty.');
-          }} 
-        />
+          }}
+        >
+          <Text style={styles.maroonButtonText}>Clear Cart</Text>
+        </TouchableOpacity>
       </View>
+
+      {/* Cart Items */}
       <FlatList
         data={cartItems}
         keyExtractor={(item, index) => index.toString()}
@@ -241,11 +264,13 @@ const CartScreen = ({ navigation }) => {
       {/* Summary Row */}
       <View style={styles.summaryRow}>
         <Text style={styles.summaryText}>Total Quantity: {totalQuantity}</Text>
-        <Text style={styles.summaryText}>${totalCost}</Text>
+        <Text style={styles.summaryText}>P{totalCost}</Text>
       </View>
 
       {/* Checkout Button */}
-      <Button title="Checkout" onPress={handleCheckout} />
+      <TouchableOpacity style={[styles.maroonButton, { alignSelf: 'center' }]} onPress={handleCheckout}>
+        <Text style={styles.maroonButtonText}>Checkout</Text>
+      </TouchableOpacity>
 
       {/* Timeslot Selection Modal */}
       <Modal
@@ -257,7 +282,8 @@ const CartScreen = ({ navigation }) => {
         <View style={styles.modalOverlay}>
           <View style={styles.timeslotModalContainer}>
             <Text style={styles.modalTitle}>Select Timeslot</Text>
-            {/* Radio option 1 */}
+
+            {/* Option 1 */}
             <TouchableOpacity
               style={styles.radioOption}
               onPress={() => setSelectedTimeslot("10:00-10:30 AM")}
@@ -267,7 +293,8 @@ const CartScreen = ({ navigation }) => {
               </View>
               <Text style={styles.radioText}>10:00-10:30 AM</Text>
             </TouchableOpacity>
-            {/* Radio option 2 */}
+
+            {/* Option 2 */}
             <TouchableOpacity
               style={styles.radioOption}
               onPress={() => setSelectedTimeslot("12:00-1:30 PM")}
@@ -277,9 +304,11 @@ const CartScreen = ({ navigation }) => {
               </View>
               <Text style={styles.radioText}>12:00-1:30 PM</Text>
             </TouchableOpacity>
+
+            {/* Confirm/Cancel row */}
             <View style={styles.modalButtonContainer}>
-              <Button
-                title="Confirm"
+              <TouchableOpacity
+                style={[styles.maroonButton, { marginRight: 10 }]}
                 onPress={() => {
                   if (!selectedTimeslot) {
                     Alert.alert('Selection Required', 'Please select a timeslot.');
@@ -288,8 +317,16 @@ const CartScreen = ({ navigation }) => {
                   setTimeslotModalVisible(false);
                   completeCheckout(selectedTimeslot);
                 }}
-              />
-              <Button title="Cancel" onPress={() => setTimeslotModalVisible(false)} />
+              >
+                <Text style={styles.maroonButtonText}>Confirm</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.grayButton}
+                onPress={() => setTimeslotModalVisible(false)}
+              >
+                <Text style={styles.grayButtonText}>Cancel</Text>
+              </TouchableOpacity>
             </View>
           </View>
         </View>
@@ -298,6 +335,9 @@ const CartScreen = ({ navigation }) => {
   );
 };
 
+export default CartScreen;
+
+// 9) Styles
 const styles = StyleSheet.create({
   loadingContainer: { 
     flex: 1, 
@@ -307,7 +347,7 @@ const styles = StyleSheet.create({
   container: { 
     flex: 1, 
     padding: 20, 
-    backgroundColor: '#fff' 
+    backgroundColor: '#fdf5e6' // Cream background
   },
   header: {
     flexDirection: 'row', 
@@ -317,8 +357,10 @@ const styles = StyleSheet.create({
   },
   title: {
     fontSize: 24, 
-    fontWeight: 'bold'
+    fontWeight: 'bold',
+    color: '#003B6F', // optional: navy text
   },
+  // Each cart item container
   itemContainer: {
     padding: 15,
     borderWidth: 1,
@@ -330,6 +372,7 @@ const styles = StyleSheet.create({
     fontSize: 18, 
     fontWeight: 'bold',
     marginBottom: 5,
+    color: '#003B6F',
   },
   itemRow: {
     flexDirection: 'row',
@@ -339,6 +382,19 @@ const styles = StyleSheet.create({
   quantityControls: {
     flexDirection: 'row',
     alignItems: 'center'
+  },
+  maroonButton: {
+    backgroundColor: '#800000',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 5,
+    alignItems: 'center',
+    marginVertical: 5,
+  },
+  maroonButtonText: {
+    color: '#fff',
+    fontWeight: 'bold',
+    fontSize: 16,
   },
   itemQuantityText: {
     fontSize: 16,
@@ -410,7 +466,16 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     width: '100%',
     marginTop: 20
-  }
+  },
+  grayButton: {
+    backgroundColor: 'gray',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 5,
+  },
+  grayButtonText: {
+    color: '#fff',
+    fontWeight: 'bold',
+    fontSize: 16,
+  },
 });
-
-export default CartScreen;
