@@ -71,7 +71,7 @@ const MenuScreen = ({ navigation }) => {
       (snapshot) => {
         const items = snapshot.docs
           .map((doc) => ({ id: doc.id, ...doc.data() }))
-          .filter((item) => item.stock > 1);
+          .filter((item) => item.stock > 0);
         setMenuItems(items);
       },
       (error) => {

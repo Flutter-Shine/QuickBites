@@ -18,9 +18,12 @@ const CartScreen = ({ navigation }) => {
   const { cartItems, clearCart, updateItemQuantity } = useCart();
   const [orderId, setOrderId] = useState(null);
 
+  /*
   // Time-check states
   const [timeLoading, setTimeLoading] = useState(true);
   const [orderingDisabled, setOrderingDisabled] = useState(false);
+  */
+
 
   // Timeslot modal states
   const [timeslotModalVisible, setTimeslotModalVisible] = useState(false);
@@ -40,6 +43,7 @@ const CartScreen = ({ navigation }) => {
     });
   }, [navigation]);
 
+  /*
   // 2) Fetch server time from the API and determine if ordering is disabled
   useEffect(() => {
     async function fetchServerTime() {
@@ -78,7 +82,7 @@ const CartScreen = ({ navigation }) => {
     }
     fetchServerTime();
   }, []);
-
+  */
   // 3) Generate the next order number for today
   const getNextOrderNumber = async () => {
     const today = new Date();
@@ -177,6 +181,8 @@ const CartScreen = ({ navigation }) => {
       Alert.alert('Cart is empty', 'Please add items to your cart.');
       return;
     }
+
+    /*
     if (timeLoading) {
       Alert.alert("Please wait", "Checking ordering availability, please try again shortly.");
       return;
@@ -185,6 +191,8 @@ const CartScreen = ({ navigation }) => {
       Alert.alert('Ordering Unavailable', 'Ordering is currently unavailable.');
       return;
     }
+    */
+
     if (totalQuantity > 3) {
       Alert.alert('Checkout Error', 'You cannot checkout if the total quantity exceeds 3 Items.');
       return;
@@ -227,6 +235,7 @@ const CartScreen = ({ navigation }) => {
     );
   };
 
+  /*
   // 7) Loading state
   if (timeLoading) {
     return (
@@ -235,7 +244,8 @@ const CartScreen = ({ navigation }) => {
       </View>
     );
   }
-
+  */
+ 
   // 8) Main render
   return (
     <View style={styles.container}>

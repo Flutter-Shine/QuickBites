@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
+import { View, ActivityIndicator } from 'react-native';
 import LoginScreen from './screens/LoginScreen';
 import RegisterScreen from './screens/RegisterScreen';
 import AppNavigator from './navigation/AppNavigator'; // Navigator that includes MenuScreen, etc.
@@ -23,9 +24,9 @@ const AuthStackScreen = () => (
 );
 
 const App = () => {
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [isAuthenticated, setIsAuthenticated] = useState(auth.currentUser ? true : false);
 
-  // Listen for authentication state changes.
+  // Check if user is cached immediately, then listen for changes
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       setIsAuthenticated(!!user);
