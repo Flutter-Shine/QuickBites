@@ -66,7 +66,7 @@ const CartScreen = ({ navigation }) => {
         const disableInterval1Start = 10 * 60; // 10:00 AM
         const disableInterval1End = 10 * 60 + 30; // 10:30 AM
         const disableInterval2Start = 12 * 60 + 30; // 12:30 PM
-        const disableInterval2End = 13 * 60;       // 1:00 PM (adjust if needed)
+        const disableInterval2End = 24 * 60;       // 12:00 AM (adjust if needed)
 
         const isDisabled =
           (minutes >= disableInterval1Start && minutes < disableInterval1End) ||

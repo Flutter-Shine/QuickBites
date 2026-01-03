@@ -1,10 +1,10 @@
 {
   "expo": {
-    "name": "QuickBites",
+    "name": "QuickBite",
     "slug": "QuickBites",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
+    "icon": "./assets/Bite.png",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "splash": {
@@ -17,12 +17,19 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
+        "foregroundImage": "./assets/Bite.png",
         "backgroundColor": "#ffffff"
-      }
+      },
+      "package": "com.Quickbites.Student"
     },
     "web": {
       "favicon": "./assets/favicon.png"
-    }
+    },
+    "extra": {
+      "eas": {
+        "projectId": "58b1a0a3-5223-46bb-aed1-fc4db16ba467"
+      }
+    },
+    "owner": "fluttershine"
   }
 }
